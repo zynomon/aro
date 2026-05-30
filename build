@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -e
+
+FONTFORGE=""
+
+if command -v fontforge &>/dev/null; then
+    FONTFORGE="fontforge"
+elif [ -f "/c/Program Files/FontForgeBuilds/bin/fontforge.exe" ]; then
+    FONTFORGE="/c/Program Files/FontForgeBuilds/bin/fontforge.exe"
+else
+    read -p "fontforge not found. Enter path: " FONTFORGE
+    [ -z "$FONTFORGE" ] && exit 1
+fi
+
+echo "Using: $FONTFORGE"
+
+rm -rf bsrc output
+mkdir -p bsrc output
+# if you are creating your own font then edit these but as for apache 2.0 terms, you have to credit me in a way
+cat > bsrc/build.pe << 'EOF'
+New()
+SetFontNames("aro", "Aro", "Aro Regular", "Regular", "Copyright 2025 Zynomon Aelius", "1.000")
+SetTTFName(0x409, 9, "Zynomon Aelius")
+SetTTFName(0x409, 11, "https://zynomon.github.io/aro")
+SetTTFName(0x409, 13, "Apache 2.0")
+SetOS2Value("Weight", 400)
+SetOS2Value("Width", 5)
+SetOS2Value("FSType", 0)
+SetItalicAngle(0)
+SetMacStyle(0)
+SetGasp(65535, 15)
+Reencode("unicode")
+SetOS2Value("Panose", [2, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+EOF
+
+for svg in src/en/*.svg src/symbols/*.svg; do
+    filename=$(basename "$svg" .svg)
+    token="${filename%%_*}"
+    codepoint="${token#U}"
+    codepoint="${codepoint#+}"
+
+    if [ -n "$codepoint" ]; then
+        dec=$((16#$codepoint))
+        echo "Select($dec)" >> bsrc/build.pe
+        echo "Import(\"$svg\", 0)" >> bsrc/build.pe
+        echo "SetGlyphChanged($dec)" >> bsrc/build.pe
+    fi
+done
+
+cat >> bsrc/build.pe << 'EOF'
+SelectAll()
+AutoWidth(0)
+Generate("output/aro.ttf")
+Generate("output/aro.otf")
+Save("bsrc/aro.sfd")
+Close()
+EOF
+
+"$FONTFORGE" -script bsrc/build.pe
+
+echo "Done: output/aro.ttf output/aro.otf"
